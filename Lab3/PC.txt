@@ -1,0 +1,23 @@
+hazards
+PC = 0000
+PC = 0004
+PC = 0008
+PC = 000c
+PC = 0010
+PC = 0014
+PC = 0018
+PC = 001c
+PC = 0020
+PC = 0024
+
+nohazards
+PC = 0000
+PC = 0004
+PC = 0008
+PC = 000c
+PC = 0010
+PC = 0014
+PC = 0018
+PC = 001c
+PC = 0020
+PC = 0024
