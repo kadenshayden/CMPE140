@@ -6,8 +6,6 @@ x28 = 00000004
 x29 = 00000000
 x30 = 0000000f
 x31 = 00000004
-xX = 00000004
-xX = 00000004
 
 nohazards
 x5 = 00000005
@@ -17,5 +15,3 @@ x28 = ffffffff
 x29 = 00000005
 x30 = 0000000b
 x31 = fffffffa
-xX = fffffffa
-xX = fffffffa
