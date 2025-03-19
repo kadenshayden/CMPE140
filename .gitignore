@@ -52,6 +52,7 @@ Temporary Items
 *.ip_user_files/
 *.sim/
 *.srcs/
+*.dir/
 
 #Vivado Project Files
 .xpr
