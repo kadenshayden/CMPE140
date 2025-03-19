@@ -27,14 +27,13 @@ module cpu(
     inout logic [31:0] dmem_data //Write & Read data
     );
     
-    wire [31:0] alu_out, write_data;
+    wire [31:0] alu_out;
     wire [31:0] regData1, regData2; 
-      
-        
+
     int file1, file2;
-    logic [1:0] ALUsrc;
+    logic ALUsrc, regWrite;
     logic [15:0] CC = 16'd0;
-    logic [63:0] PC = 64'd0;
+    logic [31:0] PC = 32'd0;
     
     logic signed [11:0] i; //immediate
     logic signed [31:0] i_extend; //immediate extended
@@ -43,11 +42,12 @@ module cpu(
     logic [6:0] opcode; //opcode
     
     logic [63:0] IF_ID; //Fetch and Decode carry register
-    logic [136:0] ID_EX; //Decode and Execute carry register
-    logic [192:0] EX_MEM; //Execute and Memory carry register
-    logic [127:0] MEM_WB; //Memory and Write Back carry register
+    logic [137:0] ID_EX; //Decode and Execute carry register
+    logic [69:0] EX_MEM; //Execute and Memory carry register
+    logic [69:0] MEM_WB; //Memory and Write Back carry register
     
     logic [31:0] ALUinput;
+    logic [31:0] writeData;
      
     //Stage One - Fetch
     always@(posedge clk, negedge rst_n)begin
@@ -64,15 +64,18 @@ module cpu(
     assign IF_ID = {imem_insn[31:0], PC[31:0]};
     
     //Stage Two - Decode and register read
-    reg_file read(.clk(clk), .RR1(r1), .RR2(r2), .WR(R2), .WD(write_data),
-                  .RD1(regData1), .RD2(regData2));
+    reg_file read(.clk(clk), .regWrite(MEM_WB[37]), .RR1(r1), .RR2(r2), 
+                  .WR(MEM_WB[4:0]), .WD(writeData), .RD1(regData1), 
+                  .RD2(regData2));
     always@(posedge clk, negedge rst_n)begin
         
         //opcode can determine the proper field for immediate value
         opcode = IF_ID[38:32];
         case(opcode)
             7'b0010011: begin
-                            ALUsrc = 0;                           
+                            ALUsrc = 0; 
+                            regWrite = 1;
+                            dmem_wen = 0;                          
                             i = IF_ID[63:52];                              
                             r1 = IF_ID[51:47];                         
                             func = IF_ID[46:44];
@@ -81,14 +84,10 @@ module cpu(
         endcase
 
         i_extend = { {20{i[11]}}, i}; //sign-extend to 32 bits
-        $display("ID/EX: %b" , ID_EX);
-        $display("ID/EX[135:104]:%b", ID_EX[135:104]);
-        $display("ID/EX[103:72]:%b", ID_EX[103:72]);
-        $display("ID/EX[71:40]:%b", ID_EX[71:40]);
-    
     end
     
-    assign ID_EX = {ALUsrc, i_extend, regData1, regData2, func, r2, IF_ID[31:0]};
+    assign ID_EX = {regWrite, ALUsrc, i_extend, regData1, regData2, 
+                    func, r2, IF_ID[31:0]};
     
     //Stage Three - Execute    
     alu calc(.A(ID_EX[103:72]), .B(ALUinput), .func3(ID_EX[39:37]), 
@@ -101,9 +100,11 @@ module cpu(
         else if(ID_EX[136] == 1) begin //R-type
             ALUinput = ID_EX[71:40];
         end
-        
         $display("alu_out = %b", alu_out);  
+        $display("ID_EX: %b", ID_EX);
     end
+    
+    assign  EX_MEM = {ID_EX[137], alu_out, ID_EX[36:32], ID_EX[31:0]};
     
     //Stage Four - Memory Access             
     always@(posedge clk, negedge rst_n)begin
@@ -113,18 +114,27 @@ module cpu(
         else begin
             dmem_wen = 1;
         end
+        
+//        $display("EX_MEM: %b" , EX_MEM);
     end
         
-
+    assign MEM_WB = {EX_MEM[69], EX_MEM[68:37], EX_MEM[36:32]};
  
     //Stage Five - Write Back
     always@(posedge clk, negedge rst_n)begin
-        
-//                   $display("x%1d = %h", dmem_addr, dmem_data);
-//                file2 = $fopen("C:\\CMPE140\\Lab3\\data.txt", "a");
-//                $fdisplay(file2, "x%1d = %h", dmem_addr, dmem_data);
-//                $fclose(file2);
+//         $display("MEM_WB: %b" , MEM_WB);
+        if(MEM_WB[37]) begin
+            writeData = MEM_WB[36:5];
+            $display("MEM_WB: %b" , MEM_WB[36:5]);
+            $display("MEM_WB: %b" , MEM_WB[4:0]);
+        end
+        else begin
+            
+        end
+          
     end
+    
+    
 endmodule
 
 module reg_file(
