@@ -34,18 +34,20 @@ module cpu(
     int file1, file2;
     logic [1:0] ALUsrc;
     logic [15:0] CC = 16'd0;
-    logic [63:0] PC = 64'd0;
+    logic [31:0] PC = 32'd0;
     
-    logic signed [11:0] i; //immediate
-    logic signed [31:0] i_extend; //immediate extended
+    logic signed [11:0] imm; //immediate
+    logic signed [31:0] imm_extend; //immediate extended
     logic [4:0] r1, r2; //read registers
-    logic [2:0] func; //func3
-    logic [6:0] opcode; //opcode
+    logic [2:0] func3; //func3 should be instr[14:12]
+    logic func7; // func7 bit should be instr[30]
+    logic [31:0] instr; // whole ass instruction
+    logic [6:0] opcode; //opcode should be instr[6:0]
     
-    logic [63:0] IF_ID; //Fetch and Decode carry register
-    logic [136:0] ID_EX; //Decode and Execute carry register
-    logic [192:0] EX_MEM; //Execute and Memory carry register
-    logic [127:0] MEM_WB; //Memory and Write Back carry register
+    reg [63:0] IF_ID; //Fetch and Decode carry register
+    reg [136:0] ID_EX; //Decode and Execute carry register
+    reg [192:0] EX_MEM; //Execute and Memory carry register
+    reg [127:0] MEM_WB; //Memory and Write Back carry register
     
     logic [31:0] ALUinput;
      
@@ -70,17 +72,10 @@ module cpu(
         
         //opcode can determine the proper field for immediate value
         opcode = IF_ID[38:32];
-        case(opcode)
-            7'b0010011: begin
-                            ALUsrc = 0;                           
-                            i = IF_ID[63:52];                              
-                            r1 = IF_ID[51:47];                         
-                            func = IF_ID[46:44];
-                            r2 = IF_ID[43:39];
-                        end
-        endcase
+        
+        
 
-        i_extend = { {20{i[11]}}, i}; //sign-extend to 32 bits
+        imm_extend = { {20{imm[11]}}, imm}; //sign-extend to 32 bits
         $display("ID/EX: %b" , ID_EX);
         $display("ID/EX[135:104]:%b", ID_EX[135:104]);
         $display("ID/EX[103:72]:%b", ID_EX[103:72]);
@@ -88,7 +83,7 @@ module cpu(
     
     end
     
-    assign ID_EX = {ALUsrc, i_extend, regData1, regData2, func, r2, IF_ID[31:0]};
+    assign ID_EX = {ALUsrc, imm_extend, regData1, regData2, func3, r2, IF_ID[31:0]};
     
     //Stage Three - Execute    
     alu calc(.A(ID_EX[103:72]), .B(ALUinput), .func3(ID_EX[39:37]), 
@@ -171,20 +166,20 @@ module aluControlUnit(
     input logic [1:0] ALUOp,
     input logic [2:0] func3,
     input logic [6:0] func7,
-    output logic [3:0] ALUCtrl
+    output logic [4:0] ALUCtrl
     );
     
     always @(*) begin
         casez({ALUOp, func3})
         //Itype
-            ({2'b00, 3'b000}): ALUCtrl = 4'b0000; //ADDI
-            ({2'b00, 3'b010}): ALUCtrl = 4'b0001; //SLTI
-            ({2'b00, 3'b011}): ALUCtrl = 4'b0010; //SLTIU
-            ({2'b00, 3'b100}): ALUCtrl = 4'b0011; //XORI
-            ({2'b00, 3'b110}): ALUCtrl = 4'b0100; //ORI
-            ({2'b00, 3'b111}): ALUCtrl = 4'b0101; //ANDI
-            ({2'b00, 3'b001}): ALUCtrl = 4'b0110; //SLLI
-            ({2'b00, 3'b101}): ALUCtrl = (func7[5] == 1 ? 4'b0111 : 4'b1000); //SRAI or SRLI
+            ({2'b00, 3'b000}): ALUCtrl = 5'b00000; //ADDI
+            ({2'b00, 3'b010}): ALUCtrl = 5'b00001; //SLTI
+            ({2'b00, 3'b011}): ALUCtrl = 5'b00010; //SLTIU
+            ({2'b00, 3'b100}): ALUCtrl = 5'b00011; //XORI
+            ({2'b00, 3'b110}): ALUCtrl = 5'b00100; //ORI
+            ({2'b00, 3'b111}): ALUCtrl = 5'b00101; //ANDI
+            ({2'b00, 3'b001}): ALUCtrl = 5'b00110; //SLLI
+            ({2'b00, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b00111 : 5'b01000); //SRAI or SRLI
         endcase
     
     end
@@ -196,29 +191,23 @@ endmodule
 
 module alu(
     input logic [31:0] A,B,
-    input logic [2:0] func3,
-    input logic [6:0] func7,
+    input logic [4:0] ALUCtrl, 
     output logic [31:0] out
 );    
     
     always_comb begin
-        case(func3)
-            3'b000: out = A + B; //ADDI
-            3'b010: out = (A < B) ? 1:0; //SLTI
-            3'b011: out = (A < B) ? 1:0; //SLTIU
-            3'b100: out = A ^ B; //XORI
-            3'b110: out = A | B; //ORI
-            3'b111: out = A & B; //ANDI
-            3'b001: out = A << B; //SLLI
-            3'b101: if(func7 == 7'b0)begin //SRLI
-                        out = A >> B;
-                    end
-                    else if(func7 == 7'b0100000)begin //SRAI
-                        out = A >>> B;
-                    end
+        case(ALUCtrl)
+            5'h00: out = A + B; //ADDI
+            5'h01: out = (A < B) ? 1:0; //SLTI
+            5'h02: out = (A < B) ? 1:0; //SLTIU
+            5'h03: out = A ^ B; //XORI
+            5'h04: out = A | B; //ORI
+            5'h05: out = A & B; //ANDI
+            5'h06: out = A << B; //SLLI
+            5'h07: out = A >>> B; //SRAI
+            5'h08: out = A >> B; //SRLI
             default: out = 32'b0;
         endcase
     end
     
-
 endmodule
