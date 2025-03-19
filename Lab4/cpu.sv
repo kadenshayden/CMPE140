@@ -133,7 +133,7 @@ module reg_file(
     input logic [31:0] WD,
     output logic [31:0] RD1, RD2
 );
-    logic [31:0] register [31:0] = '{default: 32'b0};; 
+    logic [31:0] register [31:0] = '{default: 32'b0}; 
 
     assign RD1 = register[RR1]; //read data from register 1
     assign RD2 = register[RR2]; //read data from register 2
@@ -144,11 +144,56 @@ module reg_file(
     
 endmodule
 
-module controlUnit(
-    input logic [6:0] opcode
+module controlUnit( // we can try to combine control and alu control into one module
+    input logic [6:0] opcode,
+    output logic branch, MemRead, MemtoReg, MemWrite, ALUSrc, RegWrite,
+    output logic [1:0] ALUOp
     );
     
+    reg [7:0] ctrl;
+    
+    assign {ALUOp[1:0], ALUSrc, Branch, MemRead, MemWrite, RegWrite, MemtoReg} = ctrl;
+    
+    always @(*) begin
+        casez(opcode)
+        //I-type
+            7'b00100011: ctrl = 8'b00101011;
+            
+        //R-type
+            7'b01100011: ctrl = 8'b10000010;
+            
+        endcase
+    end
 endmodule
+
+
+module aluControlUnit(
+    input logic [1:0] ALUOp,
+    input logic [2:0] func3,
+    input logic [6:0] func7,
+    output logic [3:0] ALUCtrl
+    );
+    
+    always @(*) begin
+        casez({ALUOp, func3})
+        //Itype
+            ({2'b00, 3'b000}): ALUCtrl = 4'b0000; //ADDI
+            ({2'b00, 3'b010}): ALUCtrl = 4'b0001; //SLTI
+            ({2'b00, 3'b011}): ALUCtrl = 4'b0010; //SLTIU
+            ({2'b00, 3'b100}): ALUCtrl = 4'b0011; //XORI
+            ({2'b00, 3'b110}): ALUCtrl = 4'b0100; //ORI
+            ({2'b00, 3'b111}): ALUCtrl = 4'b0101; //ANDI
+            ({2'b00, 3'b001}): ALUCtrl = 4'b0110; //SLLI
+            ({2'b00, 3'b101}): ALUCtrl = (func7[5] == 1 ? 4'b0111 : 4'b1000); //SRAI or SRLI
+        endcase
+    
+    end
+    
+    
+    
+
+endmodule
+
 module alu(
     input logic [31:0] A,B,
     input logic [2:0] func3,
