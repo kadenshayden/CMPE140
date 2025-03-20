@@ -35,6 +35,7 @@ module cpu(
     wire [31:0] write_alu;
     wire [4:0] writeReg1, writeReg2;
     wire regWriteCarry1, regWriteCarry2;
+    wire [31:0] data;
 
     int file1, file2;
     logic [15:0] CC = 16'd0;
@@ -54,6 +55,8 @@ module cpu(
     
     logic [31:0] ALUinput;
     logic [31:0] writeData;
+    logic [31:0] regW;
+    logic regWriteGod;
      
     //Stage One - Fetch
     always@(posedge clk, negedge rst_n)begin
@@ -66,12 +69,10 @@ module cpu(
             imem_addr = PC; //Address of current instruction
             PC = PC + 4; //increment pc for next instruction
             CC = CC + 1;
-            
-            
+            IF_ID = {PC[31:0], imem_insn[31:0]}; //Current Bits: 64
+
         end
     end
-    
-    assign IF_ID = {PC[31:0], imem_insn[31:0]}; //Current Bits: 64
     
     
     //Stage Two - Decode and register read            
@@ -79,38 +80,31 @@ module cpu(
                 .MemtoReg(MemtoReg), .MemWrite(MemWrite), .ALUSrc(ALUSrc), 
                 .RegWrite(RegWrite), .ALUOp(ALUOp));
              
-    reg_file regfile(.clk(clk), .regWrite(MEM_WB[37]), .RR1(rs1), .RR2(rd), 
+    reg_file regfile(.clk(clk), .regWrite(regWriteGod), .RR1(rs1), .RR2(rd), 
                      .WR(MEM_WB[36:32]), .WD(writeData), .RD1(regData1), 
                      .RD2(regData2));
                 
-                
+    //opcode can determine the proper field for immediate value
+    assign rd = IF_ID[11:7];
+    assign func3 = IF_ID[14:12];
+    assign rs1 = IF_ID[19:15];
+    assign rs2 = IF_ID[24:20];
+   
+    assign func7 = IF_ID[31:25];
+    assign imm = IF_ID[31:20];    
+    assign imm_extend = { {20{imm[11]}}, imm}; //sign-extend to 32 bits      
     always@(posedge clk, negedge rst_n)begin
         if(!rst_n) begin
-            opcode = 7'b0;
-            rd = 5'b0;
-            func3 = 3'b0;
-            rs1 = 5'b0;
-            rs2 = 5'b0;
            
-            func7 = 7'b0 ;
-            imm = 12'b0;
         end
         else begin
-            //opcode can determine the proper field for immediate value
-            opcode = IF_ID[6:0];
-            rd = IF_ID[11:7];
-            func3 = IF_ID[14:12];
-            rs1 = IF_ID[19:15];
-            rs2 = IF_ID[24:20];
-           
-            func7 = IF_ID[31:25];
-            imm = IF_ID[31:20];
-    
-            imm_extend = { {20{imm[11]}}, imm}; //sign-extend to 32 bits
             
+    
+            
+            ID_EX = { func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, IF_ID[63:32]}; //Current Bits: 147
         end 
     end
-    assign ID_EX = { func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, IF_ID[63:32]}; //Current Bits: 147
+
     
     
     
@@ -120,56 +114,35 @@ module cpu(
     alu calc(.A(regData1), .B(ALUinput), .ALUCtrl(ALUCtrl), .out(alu_out));
     
     assign ALUinput = (ID_EX[135] == 1) ? ID_EX[127:96] : ID_EX[95:64];
-
-    always@(posedge clk, negedge rst_n)begin 
-//        if(!rst_n) begin
-            
-//        end
-//        else begin
-//            if(ID_EX[135] == 1)begin //I-type
-//                ALUinput = ID_EX[127:96];
-//                $display("assigned immediate");
-//            end
-//            else if(ID_EX[135] == 0) begin //R-type
-//                ALUinput = ID_EX[95:64];
-//            end
-//            $display("alu_out = %b", alu_out);  
-//            $display("ID_EX: %b", ID_EX);
-//        end 
-        
-    end
-    assign EX_MEM = { ID_EX[136], ID_EX[132:128], alu_out }; //Holds RegWrite, rd, alu_out
+    assign writeReg1 = ID_EX[132:128];
+    assign regWriteCarry1 = ID_EX[136];
     
-    
-    //Stage Four - Memory Access             
-    always@(posedge clk, negedge rst_n)begin
-        if(!rst_n) begin
-            dmem_wen <= 0;
-        end
-        else begin
-            dmem_wen <= 1;
-            
-            MEM_WB = { regWriteCarry2, writeReg2, write_alu}; // Current Bits: 38 bits
-        end
+    always@(posedge clk)begin 
+        EX_MEM = { regWriteCarry1, writeReg1, alu_out }; //Holds RegWrite, rd, alu_out
     end
+    
+    //Stage Four - Memory Access  
     assign write_alu = EX_MEM[31:0];
     assign writeReg2 = EX_MEM[36:32];
     assign regWriteCarry2 = EX_MEM[37];
+               
+    always@(posedge clk)begin
+            dmem_wen <= 1;
+            
+            MEM_WB = { regWriteCarry2, writeReg2, write_alu}; // Current Bits: 38 bit
+    end
     
- 
+    
+    
     //Stage Five - Write Back
+    assign data = (MEM_WB[37] && MEM_WB[31:0]) ? MEM_WB[31:0] : writeData; //change later
+    assign regW = MEM_WB[37];
     always@(posedge clk, negedge rst_n)begin
         if(!rst_n) begin
-            dmem_wen <= 0;
         end
         else begin
-            if(MEM_WB[37] && MEM_WB[31:0]) begin
-                writeData = MEM_WB[31:0];
-                  $display("MEM_WB: %b" , MEM_WB[31:0]);
-            end
-            else begin
-                
-            end
+            writeData = data;
+            regWriteGod = regW;
         end
           
     end
