@@ -27,29 +27,34 @@ module cpu(
     inout logic [31:0] dmem_data //Write & Read data
     );
     
-    wire [31:0] alu_out, write_data;
-    wire [31:0] regData1, regData2; 
-      
-        
+    wire [31:0] alu_out; //Output for ALU
+    wire [31:0] regData1, regData2; //Reg file outputs
+    wire Branch, MemRead, MemtoReg, MemWrite, ALUSrc, RegWrite; //Control Unit Output
+    wire [1:0] ALUOp; //Control Unit Output
+    wire [4:0] ALUCtrl; //ALU Control
+    wire [31:0] write_alu;
+    wire [4:0] writeReg1; 
+    wire [4:0] writeReg2;
+    wire regWriteCarry1, regWriteCarry2;
+
     int file1, file2;
-    logic [1:0] ALUsrc;
     logic [15:0] CC = 16'd0;
     logic [31:0] PC = 32'd0;
     
     logic signed [11:0] imm; //immediate
     logic signed [31:0] imm_extend; //immediate extended
-    logic [4:0] r1, r2; //read registers
-    logic [2:0] func3; //func3 should be instr[14:12]
-    logic func7; // func7 bit should be instr[30]
-    logic [31:0] instr; // whole ass instruction
-    logic [6:0] opcode; //opcode should be instr[6:0]
+    logic [4:0] rs1, rs2, rd; //read registers
+    logic [2:0] func3;
+    logic [6:0] func7; 
+    logic [6:0] opcode; //opcode
     
     reg [63:0] IF_ID; //Fetch and Decode carry register
     reg [136:0] ID_EX; //Decode and Execute carry register
-    reg [192:0] EX_MEM; //Execute and Memory carry register
-    reg [127:0] MEM_WB; //Memory and Write Back carry register
+    reg [69:0] EX_MEM; //Execute and Memory carry register
+    reg [69:0] MEM_WB; //Memory and Write Back carry register
     
     logic [31:0] ALUinput;
+    logic [31:0] writeData;
      
     //Stage One - Fetch
     always@(posedge clk, negedge rst_n)begin
@@ -57,69 +62,115 @@ module cpu(
             PC <= 32'd0;
         end 
         else begin         
-            dmem_wen <= 0;
-            imem_addr <= PC; //Address of current instruction
-            PC <= PC + 4; //increment pc for next instruction
-            CC <= CC + 1;
+            dmem_wen = 0;
+            imem_addr = PC; //Address of current instruction
+            PC = PC + 4; //increment pc for next instruction
+            CC = CC + 1;
+            IF_ID <= {PC[31:0], imem_insn[31:0]}; //Current Bits: 64
         end
     end
-    assign IF_ID = {imem_insn[31:0], PC[31:0]};
     
-    //Stage Two - Decode and register read
-    reg_file read(.clk(clk), .RR1(r1), .RR2(r2), .WR(R2), .WD(write_data),
-                  .RD1(regData1), .RD2(regData2));
+   
+    
+    //Stage Two - Decode and register read            
+    controlUnit control(.opcode(opcode), .Branch(Branch), .MemRead(MemRead),
+                .MemtoReg(MemtoReg), .MemWrite(MemWrite), .ALUSrc(ALUSrc), 
+                .RegWrite(RegWrite), .ALUOp(ALUOp));
+             
+    reg_file regfile(.clk(clk), .regWrite(MEM_WB[37]), .RR1(rs1), .RR2(rs2), 
+                     .WR(MEM_WB[36:32]), .WD(writeData), .RD1(regData1), 
+                     .RD2(regData2));
+                
+                
     always@(posedge clk, negedge rst_n)begin
-        
-        //opcode can determine the proper field for immediate value
-        opcode = IF_ID[38:32];
-        
-        
-
-        imm_extend = { {20{imm[11]}}, imm}; //sign-extend to 32 bits
-        $display("ID/EX: %b" , ID_EX);
-        $display("ID/EX[135:104]:%b", ID_EX[135:104]);
-        $display("ID/EX[103:72]:%b", ID_EX[103:72]);
-        $display("ID/EX[71:40]:%b", ID_EX[71:40]);
+        if(!rst_n) begin
+            opcode = 7'b0;
+            rd = 5'b0;
+            func3 = 3'b0;
+            rs1 = 5'b0;
+            rs2 = 5'b0;
+           
+            func7 = 7'b0 ;
+            imm = 12'b0;
+        end
+        else begin
+            //opcode can determine the proper field for immediate value
+            opcode = IF_ID[6:0];
+            rd = IF_ID[11:7];
+            func3 = IF_ID[14:12];
+            rs1 = IF_ID[19:15];
+            rs2 = IF_ID[24:20];
+           
+            func7 = IF_ID[31:25];
+            imm = IF_ID[31:20];
+    
+            imm_extend = { {20{imm[11]}}, imm}; //sign-extend to 32 bits
+            ID_EX = { RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, IF_ID[63:32]}; //Current Bits: 137
     
     end
-    
-    assign ID_EX = {ALUsrc, imm_extend, regData1, regData2, func3, r2, IF_ID[31:0]};
-    
+    end
     //Stage Three - Execute    
-    alu calc(.A(ID_EX[103:72]), .B(ALUinput), .func3(ID_EX[39:37]), 
-             .func7(ID_EX[116:110]), .out(alu_out));
+    aluControlUnit aluControl(.ALUOp(ALUOp), .func3(func3), .func7(func7), .ALUCtrl(ALUCtrl));
+    
+    alu calc(.A(regData1), .B(ALUinput), .ALUCtrl(ALUCtrl), .out(alu_out));
      
-    always@(posedge clk, negedge rst_n)begin
-        if(ID_EX[136] == 0)begin //I-type
-             ALUinput = ID_EX[135:104];
+    always@(posedge clk, negedge rst_n)begin 
+        if(!rst_n) begin
+            
         end
-        else if(ID_EX[136] == 1) begin //R-type
-            ALUinput = ID_EX[71:40];
-        end
+        else begin
+            if(ID_EX[135] == 1)begin //I-type
+                ALUinput = ID_EX[127:96];
+                $display("assigned immediate");
+            end
+            else if(ID_EX[135] == 0) begin //R-type
+                ALUinput = ID_EX[95:64];
+            end
+            $display("alu_out = %b", alu_out);  
+            $display("ID_EX: %b", ID_EX);
+
+        end 
         
-        $display("alu_out = %b", alu_out);  
     end
+    assign EX_MEM = { regWriteCarry1, writeReg1, alu_out }; //Holds RegWrite, rd, alu_out
+    assign writeReg1 = ID_EX[132:128];
+    assign regWriteCarry1 = ID_EX[136];
+    
     
     //Stage Four - Memory Access             
     always@(posedge clk, negedge rst_n)begin
         if(!rst_n) begin
-            dmem_wen = 0;
+            dmem_wen <= 0;
         end
         else begin
-            dmem_wen = 1;
+            dmem_wen <= 1;
+            
+            MEM_WB = { regWriteCarry2, writeReg2, write_alu}; // Current Bits: 38 bits
         end
     end
-        
-
+    assign write_alu = EX_MEM[31:0];
+    assign writeReg2 = EX_MEM[36:32];
+    assign regWriteCarry2 = EX_MEM[37];
+    
  
     //Stage Five - Write Back
     always@(posedge clk, negedge rst_n)begin
-        
-//                   $display("x%1d = %h", dmem_addr, dmem_data);
-//                file2 = $fopen("C:\\CMPE140\\Lab3\\data.txt", "a");
-//                $fdisplay(file2, "x%1d = %h", dmem_addr, dmem_data);
-//                $fclose(file2);
+        if(!rst_n) begin
+            dmem_wen <= 0;
+        end
+        else begin
+            if(MEM_WB[37] && MEM_WB[31:0]) begin
+                writeData = MEM_WB[31:0];
+                  $display("MEM_WB: %b" , MEM_WB[31:0]);
+            end
+            else begin
+                
+            end
+        end
+          
     end
+    
+    
 endmodule
 
 module reg_file(
@@ -128,7 +179,7 @@ module reg_file(
     input logic [31:0] WD,
     output logic [31:0] RD1, RD2
 );
-    logic [31:0] register [31:0] = '{default: 32'b0}; 
+    logic [31:0] register [31:0] = '{default: 32'b0};
 
     assign RD1 = register[RR1]; //read data from register 1
     assign RD2 = register[RR2]; //read data from register 2
@@ -141,7 +192,7 @@ endmodule
 
 module controlUnit( // we can try to combine control and alu control into one module
     input logic [6:0] opcode,
-    output logic branch, MemRead, MemtoReg, MemWrite, ALUSrc, RegWrite,
+    output logic Branch, MemRead, MemtoReg, MemWrite, ALUSrc, RegWrite,
     output logic [1:0] ALUOp
     );
     
@@ -152,10 +203,10 @@ module controlUnit( // we can try to combine control and alu control into one mo
     always @(*) begin
         casez(opcode)
         //I-type
-            7'b00100011: ctrl = 8'b00101011;
+            7'b0010011: ctrl = 8'b00101011;
             
         //R-type
-            7'b01100011: ctrl = 8'b10000010;
+            7'b0110011: ctrl = 8'b1000010;
             
         endcase
     end
@@ -183,10 +234,6 @@ module aluControlUnit(
         endcase
     
     end
-    
-    
-    
-
 endmodule
 
 module alu(
