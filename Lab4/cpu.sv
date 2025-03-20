@@ -48,7 +48,7 @@ module cpu(
     logic [6:0] opcode; //opcode
     
     reg [63:0] IF_ID; //Fetch and Decode carry register
-    reg [136:0] ID_EX; //Decode and Execute carry register
+    reg [146:0] ID_EX; //Decode and Execute carry register
     reg [69:0] EX_MEM; //Execute and Memory carry register
     reg [69:0] MEM_WB; //Memory and Write Back carry register
     
@@ -58,20 +58,24 @@ module cpu(
     //Stage One - Fetch
     always@(posedge clk, negedge rst_n)begin
         if(!rst_n) begin
-            PC <= 32'd0;
+            PC <= 32'b0;
+            CC <= 16'b0;
         end 
         else begin         
-            dmem_wen <= 0;
-            imem_addr <= PC; //Address of current instruction
-            PC <= PC + 4; //increment pc for next instruction
-            CC <= CC + 1;
+            dmem_wen = 0;
+            imem_addr = PC; //Address of current instruction
+            PC = PC + 4; //increment pc for next instruction
+            CC = CC + 1;
+            
+            
         end
     end
     
     assign IF_ID = {PC[31:0], imem_insn[31:0]}; //Current Bits: 64
     
+    
     //Stage Two - Decode and register read            
-    controlUnit control(.opcode(opcode), .Branch(Branch), .MemRead(MemRead),
+    controlUnit control(.opcode(IF_ID[6:0]), .Branch(Branch), .MemRead(MemRead),
                 .MemtoReg(MemtoReg), .MemWrite(MemWrite), .ALUSrc(ALUSrc), 
                 .RegWrite(RegWrite), .ALUOp(ALUOp));
              
@@ -103,37 +107,38 @@ module cpu(
             imm = IF_ID[31:20];
     
             imm_extend = { {20{imm[11]}}, imm}; //sign-extend to 32 bits
+            
         end 
     end
+    assign ID_EX = { func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, IF_ID[63:32]}; //Current Bits: 147
     
-    assign ID_EX = { RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, IF_ID[63:32]}; //Current Bits: 137
     
     
     //Stage Three - Execute    
-    aluControlUnit aluControl(.ALUOp(ALUOp), .func3(func3), .func7(func7), .ALUCtrl(ALUCtrl));
+    aluControlUnit aluControl(.ALUOp(ALUOp), .func3(ID_EX[146:144]), .func7(ID_EX[143:137]), .ALUCtrl(ALUCtrl));
     
     alu calc(.A(regData1), .B(ALUinput), .ALUCtrl(ALUCtrl), .out(alu_out));
-     
+    
+    assign ALUinput = (ID_EX[135] == 1) ? ID_EX[127:96] : ID_EX[95:64];
+
     always@(posedge clk, negedge rst_n)begin 
-        if(!rst_n) begin
+//        if(!rst_n) begin
             
-        end
-        else begin
-            if(ID_EX[135] == 1)begin //I-type
-                ALUinput = ID_EX[127:96];
-                $display("assigned immediate");
-            end
-            else if(ID_EX[135] == 0) begin //R-type
-                ALUinput = ID_EX[95:64];
-            end
-            $display("alu_out = %b", alu_out);  
-            $display("ID_EX: %b", ID_EX);
-            EX_MEM = { regWriteCarry1, writeRegister1, alu_out }; //Holds RegWrite, rd, alu_out
-        end 
+//        end
+//        else begin
+//            if(ID_EX[135] == 1)begin //I-type
+//                ALUinput = ID_EX[127:96];
+//                $display("assigned immediate");
+//            end
+//            else if(ID_EX[135] == 0) begin //R-type
+//                ALUinput = ID_EX[95:64];
+//            end
+//            $display("alu_out = %b", alu_out);  
+//            $display("ID_EX: %b", ID_EX);
+//        end 
         
     end
-    assign writeRegister1 = ID_EX[132:128];
-    assign regWriteCarry1 = ID_EX[136];
+    assign EX_MEM = { ID_EX[136], ID_EX[132:128], alu_out }; //Holds RegWrite, rd, alu_out
     
     
     //Stage Four - Memory Access             
@@ -144,11 +149,11 @@ module cpu(
         else begin
             dmem_wen <= 1;
             
-            MEM_WB = { regWriteCarry2, writeRegister2, write_alu}; // Current Bits: 38 bits
+            MEM_WB = { regWriteCarry2, writeReg2, write_alu}; // Current Bits: 38 bits
         end
     end
     assign write_alu = EX_MEM[31:0];
-    assign writeRegister2 = EX_MEM[36:32];
+    assign writeReg2 = EX_MEM[36:32];
     assign regWriteCarry2 = EX_MEM[37];
     
  
@@ -205,7 +210,7 @@ module controlUnit( // we can try to combine control and alu control into one mo
             7'b0010011: ctrl = 8'b00101011;
             
         //R-type
-            7'b0110011: ctrl = 8'b1000010;
+            7'b0110011: ctrl = 8'b10000010;
             
         endcase
     end
