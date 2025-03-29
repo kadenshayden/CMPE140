@@ -51,7 +51,7 @@ cpu dut
 );
     
     // Change to the file you need
-rom #( .addr_width (address_size), .data_width (word_size), .init_file ("addi_hazards.dat") )
+rom #( .addr_width (address_size), .data_width (word_size), .init_file ("i_type.dat") )
 imem (
 .addr(imem_addr),
 .data(imem_insn)

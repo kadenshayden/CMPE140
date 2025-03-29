@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="tb_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="glbl" />
+            <top_module name="tb" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="0.000 ns"></ZoomStartTime>
+      <ZoomEndTime time="266.631 ns"></ZoomEndTime>
+      <Cursor1Time time="1,000.000 ns"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="224"></NameColumnWidth>
+      <ValueColumnWidth column_width="105"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="10" />
+   <wvobject fp_name="/tb/rst_n" type="logic">
+      <obj_property name="ElementShortName">rst_n</obj_property>
+      <obj_property name="ObjectShortName">rst_n</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/clk" type="logic">
+      <obj_property name="ElementShortName">clk</obj_property>
+      <obj_property name="ObjectShortName">clk</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/imem_addr" type="array">
+      <obj_property name="ElementShortName">imem_addr[31:0]</obj_property>
+      <obj_property name="ObjectShortName">imem_addr[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/imem_insn" type="array">
+      <obj_property name="ElementShortName">imem_insn[31:0]</obj_property>
+      <obj_property name="ObjectShortName">imem_insn[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/IF_ID" type="array">
+      <obj_property name="ElementShortName">IF_ID[63:0]</obj_property>
+      <obj_property name="ObjectShortName">IF_ID[63:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/ID_EX" type="array">
+      <obj_property name="ElementShortName">ID_EX[156:0]</obj_property>
+      <obj_property name="ObjectShortName">ID_EX[156:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/EX_MEM" type="array">
+      <obj_property name="ElementShortName">EX_MEM[69:0]</obj_property>
+      <obj_property name="ObjectShortName">EX_MEM[69:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/MEM_WB" type="array">
+      <obj_property name="ElementShortName">MEM_WB[69:0]</obj_property>
+      <obj_property name="ObjectShortName">MEM_WB[69:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/writeData" type="array">
+      <obj_property name="ElementShortName">writeData[31:0]</obj_property>
+      <obj_property name="ObjectShortName">writeData[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb/dut/regfile/register" type="array">
+      <obj_property name="ElementShortName">register[31:0][31:0]</obj_property>
+      <obj_property name="ObjectShortName">register[31:0][31:0]</obj_property>
+   </wvobject>
+</wave_config>
