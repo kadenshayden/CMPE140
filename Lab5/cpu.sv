@@ -49,12 +49,12 @@ module cpu(
     logic [6:0] opcode; //opcode
     
     reg [63:0] IF_ID; //Fetch and Decode carry register
-    reg [156:0] ID_EX; //Decode and Execute carry register
+    reg [161:0] ID_EX; //Decode and Execute carry register
     reg [69:0] EX_MEM; //Execute and Memory carry register
     reg [69:0] MEM_WB; //Memory and Write Back carry register
     
     wire [63:0] IF_IDwire; //Wire from IF_ID to ID_EX
-    wire [156:0] ID_EXwire; //Wire from ID_EX to EX_MEM
+    wire [161:0] ID_EXwire; //Wire from ID_EX to EX_MEM
     wire [69:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
     wire [69:0] MEM_WBwire; //Wire from MEM_WB to WB
     
@@ -116,7 +116,7 @@ module cpu(
             //UPDATE THIS LIST WHEN ADDING TO CARRY REG
             // ID_EX(shamt, rs1, rs2, func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, PC)
             
-            // shamt = ID_EX
+            // shamt = ID_EX[161:157]
             // rs1 = ID_EX[156:152]
             // rs2 = ID_EX[151:147]
             // func3 = ID_EX[146:144]
@@ -143,7 +143,7 @@ module cpu(
     
     aluControlUnit aluControl(.ALUOp(ALUOp), .func3(ID_EXwire[146:144]), .func7(ID_EXwire[143:137]), .ALUCtrl(ALUCtrl));
     
-    alu calc(.A(alu_A), .B(bestAlu_B), .ALUCtrl(ALUCtrl), .out(alu_out));
+    alu calc(.shamt(ID_EXwire[161:157]), .A(alu_A), .B(bestAlu_B), .ALUCtrl(ALUCtrl), .out(alu_out));
     
     assign bestAlu_B = (ID_EXwire[136] == 1) ? ID_EXwire[127:96] : alu_B; //Imm_extend or regData2
     
@@ -307,7 +307,8 @@ module aluControlUnit(
 endmodule
 
 module alu(
-    input logic [31:0] A,B,
+    input logic [4:0] shamt,
+    input logic signed [31:0] A,B,
     input logic [4:0] ALUCtrl, 
     output logic [31:0] out
 );    
@@ -320,9 +321,9 @@ module alu(
             3: out = A ^ B; //XORI
             4: out = A | B; //ORI
             5: out = A & B; //ANDI
-            6: out = A << B; //SLLI
-            7: out = A >>> B; //SRAI
-            8: out = A >> B; //SRLI
+            6: out = A << shamt; //SLLI
+            7: out = A >>> shamt; //SRAI
+            8: out = A >> shamt; //SRLI
             default: out = 32'b0;
         endcase
     end
