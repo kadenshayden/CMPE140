@@ -125,7 +125,7 @@ module cpu(
             // ALUSrc = ID_EX[135]
             // ALUOp = ID_EX[134:133]
             // rd = ID_EX[132:128]
-            // imm_extend = ID_EX[127:65]
+            // imm_extend = ID_EX[127:96]
             // regData2 = ID_EX[95:64]
             // regData1 = ID_EX[63:32]
             // PC = ID_EX[31:0]
@@ -145,7 +145,8 @@ module cpu(
     
     alu calc(.shamt(ID_EXwire[161:157]), .A(alu_A), .B(bestAlu_B), .ALUCtrl(ALUCtrl), .out(alu_out));
     
-    assign bestAlu_B = (ID_EXwire[136] == 1) ? ID_EXwire[127:96] : alu_B; //Imm_extend or regData2
+    assign bestAlu_B = (ID_EXwire[135] == 1) ? ID_EXwire[127:96] : alu_B; //imm_extend or regData2
+    //Check ALUSrc to decide which to use
     
     always@(*) begin
         case(forwardA)
@@ -156,7 +157,7 @@ module cpu(
         case(forwardB)
             2'b00: alu_B = ID_EXwire[95:64]; // stage 2 (DECODE) regData2
             2'b10: alu_B = EX_MEMwire[31:0]; // stage 4 (MEMORY) ALU out
-            2'b01: alu_A = writeData;        // stage 5 (WRITE BACK) ALU out
+            2'b01: alu_B = writeData;        // stage 5 (WRITE BACK) ALU out
         endcase
     end
     always@(posedge clk)begin 
@@ -292,7 +293,7 @@ module aluControlUnit(
     
     always @(*) begin
         casez({ALUOp, func3})
-        //Itype
+        //I-type
             ({2'b00, 3'b000}): ALUCtrl = 5'b00000; //ADDI
             ({2'b00, 3'b010}): ALUCtrl = 5'b00001; //SLTI
             ({2'b00, 3'b011}): ALUCtrl = 5'b00010; //SLTIU
@@ -301,6 +302,16 @@ module aluControlUnit(
             ({2'b00, 3'b111}): ALUCtrl = 5'b00101; //ANDI
             ({2'b00, 3'b001}): ALUCtrl = 5'b00110; //SLLI
             ({2'b00, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b00111 : 5'b01000); //SRAI or SRLI
+            
+        //R-type
+            ({2'b10, 3'b000}): ALUCtrl = (func7[5] == 1 ? 5'b01001 : 5'b01010); //SUB or ADD
+            ({2'b10, 3'b001}): ALUCtrl = 5'b01011; //SLL
+            ({2'b10, 3'b010}): ALUCtrl = 5'b01100; //SLT
+            ({2'b10, 3'b011}): ALUCtrl = 5'b01101; //SLTU
+            ({2'b10, 3'b100}): ALUCtrl = 5'b01110; //XOR
+            ({2'b10, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b01111 : 5'b10000); //SRA or SRL
+            ({2'b10, 3'b110}): ALUCtrl = 5'b10001; //OR
+            ({2'b10, 3'b111}): ALUCtrl = 5'b10010; //AND     
         endcase
     
     end
@@ -315,6 +326,8 @@ module alu(
     
     always_comb begin
         case(ALUCtrl)
+        
+        //I-Type
             0: out = A + B; //ADDI
             1: out = (A < B) ? 1:0; //SLTI
             2: out = (A < B) ? 1:0; //SLTIU
@@ -324,6 +337,35 @@ module alu(
             6: out = A << shamt; //SLLI
             7: out = A >>> shamt; //SRAI
             8: out = A >> shamt; //SRLI
+        //R-Type
+            9: out = A - B; //SUB
+            10: out = A + B; //ADD
+            11: begin  //SLL
+                    if(B < 0) 
+                        begin 
+                            out = ~(A >> ~B); //Bizarre condition when B is negative
+                        end
+                    else out = A << B;
+                end 
+            12: out = (A < B) ? 1:0; //SLTI
+            13: out = (A < B) ? 1:0; //SLTU
+            14: out = A ^ B; //XOR
+            15: begin  //SRA
+                    if(B < 0) 
+                        begin 
+                            out = ~(A <<< ~B); //Bizarre condition when B is negative
+                        end
+                    else out = A >>> B;
+                end 
+            16: begin  //SRL
+                    if(B < 0) 
+                        begin 
+                            out = ~(A << ~B); //Bizarre condition when B is negative
+                        end
+                    else out = A >> B;
+                end 
+            17: out = A | B; //OR
+            18: out = A & B; //AND
             default: out = 32'b0;
         endcase
     end
