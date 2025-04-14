@@ -23,6 +23,7 @@ module cpu(
     input logic rst_n, clk, 
     input logic [31:0] imem_insn, //ROM instruction
     output logic dmem_wen,  // 0 to read, 1 to write
+    output logic [3:0] byte_en, //Send which bytes to store
     output logic [31:0] imem_addr, dmem_addr, //Address lines
     inout logic [31:0] dmem_data //Memory Write & Read data
     );
@@ -52,14 +53,14 @@ module cpu(
     logic [6:0] opcode; //opcode
     
     reg [63:0] IF_ID; //Fetch and Decode carry register
-    reg [161:0] ID_EX; //Decode and Execute carry register
-    reg [69:0] EX_MEM; //Execute and Memory carry register
-    reg [69:0] MEM_WB; //Memory and Write Back carry register
+    reg [164:0] ID_EX; //Decode and Execute carry register
+    reg [72:0] EX_MEM; //Execute and Memory carry register
+    reg [70:0] MEM_WB; //Memory and Write Back carry register
     
     wire [63:0] IF_IDwire; //Wire from IF_ID to ID_EX
-    wire [161:0] ID_EXwire; //Wire from ID_EX to EX_MEM
-    wire [69:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
-    wire [69:0] MEM_WBwire; //Wire from MEM_WB to WB
+    wire [164:0] ID_EXwire; //Wire from ID_EX to EX_MEM
+    wire [72:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
+    wire [70:0] MEM_WBwire; //Wire from MEM_WB to WB
     
     logic [31:0] alu_A, alu_B, bestAlu_B; //To determine ALU inputs
     logic signed [31:0] writeData; //Write data for register
@@ -111,13 +112,16 @@ module cpu(
            //Nothing here for now
         end
         else begin    
-            ID_EX = { IF_IDwire[24:20], IF_IDwire[19:15], IF_IDwire[24:20], IF_IDwire[14:12], IF_IDwire[31:25], 
+            ID_EX = {MemtoReg, MemWrite, MemRead, IF_IDwire[24:20], IF_IDwire[19:15], IF_IDwire[24:20], IF_IDwire[14:12], IF_IDwire[31:25], 
                       RegWrite, ALUSrc, ALUOp, IF_IDwire[11:7], imm_extend, regData2, 
                       regData1, IF_IDwire[63:32]}; //Current Bits: 162
                  
             //UPDATE THIS LIST WHEN ADDING TO CARRY REG
-            // ID_EX(shamt, rs1, rs2, func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, PC)
+            // ID_EX( MemtoReg, MemWrite, MemRead, shamt, rs1, rs2, func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, PC)
             
+            // MemtoReg = ID_EX[164]
+            // MemWrite = ID_EX[163]
+            // MemRead = ID_EX[162]
             // shamt = ID_EX[161:157]
             // rs1 = ID_EX[156:152]
             // rs2 = ID_EX[151:147]
@@ -164,18 +168,46 @@ module cpu(
     end
     always@(posedge clk)begin 
         
-       EX_MEM = { ID_EXwire[136], ID_EXwire[132:128], alu_out }; 
-       //Holds RegWrite, rd, alu_out 
+       EX_MEM = { ID_EXwire[164], ID_EXwire[163], ID_EXwire[162], ID_EXwire[95:64], ID_EXwire[136], ID_EXwire[132:128], alu_out }; 
+      //UPDATE THIS LIST WHEN ADDING TO CARRY REG
+      //EX_MEM(MemtoReg, MemWrite, MemRead ,regData2, RegWrite, rd, alu_out)
+      
+      //MemtoReg = EX_MEM[72]
+      //MemWrite = EX_MEM[71]
+      //MemRead = EX_MEM[70]
+      //regData2 = EX_MEM[69:38]
+      //RegWrite = EX_MEM[37]
+      //rd = EX_MEM[36:32]
+      //alu_out = EX_MEM[31:0]
+      
     end
     assign EX_MEMwire = EX_MEM;
     
-    
     //Stage Four - Memory Access             
+    assign dmem_data = EX_MEMwire[69:38]; //regData2 always written to memory
+    assign dmem_addr = EX_MEMwire[31:0]; //alu_out sets the memory address
     always@(posedge clk)begin
-            dmem_wen <= 1;
+            if(EX_MEMwire[71] == 1) begin
+                dmem_wen = 1; //If MemWrite, write data to memory
+                MEM_WB = { EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
+                 //Holds RegWrite, rd, alu_out
+            end
+            if(EX_MEMwire[70] == 1) begin 
+                dmem_wen = 0; //If MemRead, read data to write back
+                MEM_WB = { dmem_data, EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
+                //
+            end
             
-            MEM_WB = { EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]}; // Current Bits: 38 bit
-            //Holds RegWrite, rd, alu_out
+        //UPDATE THIS LIST WHEN ADDING TO CARRY REG
+        //MEM_WB(dmem_data, MemtoReg, RegWrite, rd, alu_out)
+        
+        //dmem_data = MEM_WB[70:39]
+        //MemtoReg = MEM_WB[38]
+        //RegWrite = MEM_WB[37]
+        //rd = MEM_WB[36:32]
+        //alu_out = MEM_WB[31:0]
+            
+           
     end
     assign MEM_WBwire = MEM_WB;
     
@@ -183,16 +215,27 @@ module cpu(
     //Stage Five - Write Back
     //Conditional checks RegWrite to write to register file
     always@(MEM_WBwire)begin
-        if(MEM_WBwire[37] && MEM_WBwire[31:0] >= 0)begin
-            writeData = MEM_WB[31:0];
-        end
+
+//        if(MEM_WBwire[38] == 1) begin //Write memory data to the register
+//            if(MEM_WBwire[70:39] >= 0) begin
+//                writeData = MEM_WBwire[70:39];
+//            end
+//        end
+//        else if(MEM_WBwire[38] == 0) begin //Write alu_out to the register
+//            if(MEM_WBwire[37] && MEM_WBwire[31:0] >= 0) begin
+//                writeData = MEM_WBwire[31:0];
+//            end
+//        end
+            
         regW = MEM_WBwire[37];
         writeReg = MEM_WBwire[36:32];
         $fdisplay(file2, "At CC: %1d, register[%1d] = %2d", CC, writeReg, writeData);
         $fclose(file1);
         $fclose(file2);
     end  
-
+    
+    assign writeData = (MEM_WBwire[38] == 1) ? MEM_WBwire[70:39] : MEM_WBwire[31:0];
+   
 
     
 endmodule
@@ -286,11 +329,16 @@ module controlUnit(
     always @(*) begin
         casez(opcode)
         //I-type
-            7'b0010011: ctrl = 8'b00101011;
+            7'b0010011: ctrl = 8'b00100010;
             
         //R-type
             7'b0110011: ctrl = 8'b10000010;
             
+        //Load
+            7'b0000011: ctrl = 8'b00101011;
+            
+        //Store
+            7'b0100011: ctrl = 8'b00100100;
         endcase
     end
 endmodule
@@ -322,8 +370,21 @@ module aluControlUnit(
             ({2'b10, 3'b100}): ALUCtrl = 5'b01110; //XOR
             ({2'b10, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b01111 : 5'b10000); //SRA or SRL
             ({2'b10, 3'b110}): ALUCtrl = 5'b10001; //OR
-            ({2'b10, 3'b111}): ALUCtrl = 5'b10010; //AND     
-        endcase
+            ({2'b10, 3'b111}): ALUCtrl = 5'b10010; //AND 
+            
+        //Load
+            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LB
+            ({2'b00, 3'b001}): ALUCtrl = 5'b10011; //LH
+            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LW
+            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LBU
+            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LHU
+            
+        //Store
+            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //SB
+            ({2'b00, 3'b001}): ALUCtrl = 5'b10011; //SH
+            ({2'b00, 3'b010}): ALUCtrl = 5'b10011; //SW
+             
+        endcase 
     
     end
 endmodule
@@ -377,6 +438,19 @@ module alu(
                 end 
             17: out = A | B; //OR
             18: out = A & B; //AND
+            
+        //Load
+//            19:
+//            20:
+//            21:
+//            22:
+//            23:
+        
+        //Store
+//            24:
+//            25:
+//            26:
+        
             default: out = 32'b0;
         endcase
     end
