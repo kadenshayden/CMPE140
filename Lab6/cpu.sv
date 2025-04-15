@@ -186,17 +186,17 @@ module cpu(
     //Stage Four - Memory Access             
     assign dmem_data = EX_MEMwire[69:38]; //regData2 always written to memory
     assign dmem_addr = EX_MEMwire[31:0]; //alu_out sets the memory address
+    assign dmem_wen = EX_MEMwire[71]; //If 1 write, if 0 read
+    
     always@(posedge clk)begin
-            if(EX_MEMwire[71] == 1) begin
-                dmem_wen = 1; //If MemWrite, write data to memory
-                MEM_WB = { EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
-                 //Holds RegWrite, rd, alu_out
-            end
-            if(EX_MEMwire[70] == 1) begin 
-                dmem_wen = 0; //If MemRead, read data to write back
-                MEM_WB = { dmem_data, EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
-                //
-            end
+        if(EX_MEMwire[70] == 1) begin //If MemRead, read data to write back
+            MEM_WB = { dmem_data, EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
+            //MEM_WB(dmem_data, MemtoReg, RegWrite, rd, alu_out)
+        end
+        else begin
+            MEM_WB = { EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
+            //MEM_WB(MemtoReg, RegWrite, rd, alu_out)
+        end
             
         //UPDATE THIS LIST WHEN ADDING TO CARRY REG
         //MEM_WB(dmem_data, MemtoReg, RegWrite, rd, alu_out)
@@ -235,6 +235,7 @@ module cpu(
     end  
     
     assign writeData = (MEM_WBwire[38] == 1) ? MEM_WBwire[70:39] : MEM_WBwire[31:0];
+    // If MemtoReg = 1, use RAM data, else use alu_out
    
 
     
