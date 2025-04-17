@@ -31,9 +31,10 @@ module cpu(
     wire [31:0] alu_out; //Output for ALU
     wire [31:0] regData1, regData2; //Register File Read outputs
     wire Branch, MemRead, MemtoReg, MemWrite, ALUSrc, RegWrite; //Control Unit Output
-    wire [1:0] ALUOp; //Control Unit Output
+    wire [2:0] ALUOp; //Control Unit Output
     wire [4:0] ALUCtrl; //ALU Control
     wire [1:0] forwardA, forwardB; //Forwarding MUXs
+    wire [3:0] byte_en_line; //Byte enable line
 
     wire [31:0] data; //Write Back variable
     
@@ -53,13 +54,13 @@ module cpu(
     logic [6:0] opcode; //opcode
     
     reg [63:0] IF_ID; //Fetch and Decode carry register
-    reg [164:0] ID_EX; //Decode and Execute carry register
-    reg [72:0] EX_MEM; //Execute and Memory carry register
+    reg [165:0] ID_EX; //Decode and Execute carry register
+    reg [76:0] EX_MEM; //Execute and Memory carry register
     reg [70:0] MEM_WB; //Memory and Write Back carry register
     
     wire [63:0] IF_IDwire; //Wire from IF_ID to ID_EX
-    wire [164:0] ID_EXwire; //Wire from ID_EX to EX_MEM
-    wire [72:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
+    wire [165:0] ID_EXwire; //Wire from ID_EX to EX_MEM
+    wire [76:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
     wire [70:0] MEM_WBwire; //Wire from MEM_WB to WB
     
     logic [31:0] alu_A, alu_B, bestAlu_B; //To determine ALU inputs
@@ -104,7 +105,11 @@ module cpu(
     //func7 = IF_ID[31:25]
     //imm = IF_ID[31:20]
     
-      assign imm = IF_IDwire[31:20]; //Retrieve immediate value
+    always@(*) begin
+        if(ALUOp == 3'b100) imm = {IF_IDwire[31:25], IF_IDwire[11:7]};
+        else imm = IF_IDwire[31:20];
+    end
+//      assign imm = IF_IDwire[31:20]; //Retrieve immediate value
       assign imm_extend = { {20{imm[11]}}, imm }; //Sign-extend immediate value to 32 bits 
 
     always@(posedge clk, negedge rst_n)begin
@@ -119,18 +124,18 @@ module cpu(
             //UPDATE THIS LIST WHEN ADDING TO CARRY REG
             // ID_EX( MemtoReg, MemWrite, MemRead, shamt, rs1, rs2, func3, func7, RegWrite, ALUSrc, ALUOp, rd, imm_extend, regData2, regData1, PC)
             
-            // MemtoReg = ID_EX[164]
-            // MemWrite = ID_EX[163]
-            // MemRead = ID_EX[162]
-            // shamt = ID_EX[161:157]
-            // rs1 = ID_EX[156:152]
-            // rs2 = ID_EX[151:147]
-            // func3 = ID_EX[146:144]
-            // func7 = ID_EX[143:137]
-            // regWrite = ID_EX[136]
-            // ALUSrc = ID_EX[135]
-            // ALUOp = ID_EX[134:133]
-            // rd = ID_EX[132:128]
+            // MemtoReg = ID_EX[165]
+            // MemWrite = ID_EX[164]
+            // MemRead = ID_EX[163]
+            // shamt = ID_EX[162:158]
+            // rs1 = ID_EX[157:153]
+            // rs2 = ID_EX[152:148]
+            // func3 = ID_EX[147:145]
+            // func7 = ID_EX[144:138] or imm[11:5]
+            // regWrite = ID_EX[137]
+            // ALUSrc = ID_EX[136]
+            // ALUOp = ID_EX[135:133]
+            // rd = ID_EX[132:128] or imm[4:0]
             // imm_extend = ID_EX[127:96]
             // regData2 = ID_EX[95:64]
             // regData1 = ID_EX[63:32]
@@ -144,15 +149,15 @@ module cpu(
     //Stage Three - Execute 
     forwardingUnit forward(.EX_MEMregWrite(EX_MEMwire[37]), .MEM_WBregWrite(MEM_WBwire[37]),
     .EX_MEMregRd(EX_MEMwire[36:32]), .MEM_WBregRd(MEM_WBwire[36:32]), 
-    .rs1(ID_EXwire[156:152]), .rs2(ID_EXwire[151:147]),
+    .rs1(ID_EXwire[157:153]), .rs2(ID_EXwire[152:148]),
     .forwardA(forwardA), .forwardB(forwardB));
     
-    aluControlUnit aluControl(.ALUOp(ALUOp), .func3(ID_EXwire[146:144]), .func7(ID_EXwire[143:137]), .ALUCtrl(ALUCtrl));
+    aluControlUnit aluControl(.ALUOp(ALUOp), .func3(ID_EXwire[147:145]), .func7(ID_EXwire[144:138]), .ALUCtrl(ALUCtrl), .byte_en(byte_en_line));
     
-    alu calc(.shamt(ID_EXwire[161:157]), .A(alu_A), .B(bestAlu_B), .ALUCtrl(ALUCtrl), .out(alu_out));
+    alu calc(.shamt(ID_EXwire[162:158]), .A(alu_A), .B(bestAlu_B), .ALUCtrl(ALUCtrl), .out(alu_out));
     
     //Check ALUSrc to decide which to use
-    assign bestAlu_B = (ID_EXwire[135] == 1) ? ID_EXwire[127:96] : alu_B; //imm_extend or regData2
+    assign bestAlu_B = (ID_EXwire[136] == 1) ? ID_EXwire[127:96] : alu_B; //imm_extend or regData2
 
     always@(*) begin
         case(forwardA)                       //     STAGE         SOURCE
@@ -168,10 +173,11 @@ module cpu(
     end
     always@(posedge clk)begin 
         
-       EX_MEM = { ID_EXwire[164], ID_EXwire[163], ID_EXwire[162], ID_EXwire[95:64], ID_EXwire[136], ID_EXwire[132:128], alu_out }; 
+       EX_MEM = { byte_en_line, ID_EXwire[165], ID_EXwire[164], ID_EXwire[163], ID_EXwire[95:64], ID_EXwire[137], ID_EXwire[132:128], alu_out }; 
       //UPDATE THIS LIST WHEN ADDING TO CARRY REG
-      //EX_MEM(MemtoReg, MemWrite, MemRead ,regData2, RegWrite, rd, alu_out)
+      //EX_MEM(byte_en_line, MemtoReg, MemWrite, MemRead ,regData2, RegWrite, rd, alu_out)
       
+      //byte_en_line = EX_MEM[76:73]
       //MemtoReg = EX_MEM[72]
       //MemWrite = EX_MEM[71]
       //MemRead = EX_MEM[70]
@@ -187,6 +193,7 @@ module cpu(
     assign dmem_data = EX_MEMwire[69:38]; //regData2 always written to memory
     assign dmem_addr = EX_MEMwire[31:0]; //alu_out sets the memory address
     assign dmem_wen = EX_MEMwire[71]; //If 1 write, if 0 read
+    assign byte_en = EX_MEMwire[76:73]; //Byte_enable is set
     
     always@(posedge clk)begin
         if(EX_MEMwire[70] == 1) begin //If MemRead, read data to write back
@@ -320,71 +327,95 @@ endmodule
 module controlUnit(
     input logic [6:0] opcode,
     output logic Branch, MemRead, MemtoReg, MemWrite, ALUSrc, RegWrite,
-    output logic [1:0] ALUOp
+    output logic [2:0] ALUOp
     );
     
-    reg [7:0] ctrl;
+    reg [8:0] ctrl;
     
-    assign {ALUOp[1:0], ALUSrc, Branch, MemRead, MemWrite, RegWrite, MemtoReg} = ctrl;
+    assign {ALUOp[2:0], ALUSrc, Branch, MemRead, MemWrite, RegWrite, MemtoReg} = ctrl;
     
     always @(*) begin
         casez(opcode)
         //I-type
-            7'b0010011: ctrl = 8'b00100010;
+            7'b0010011: ctrl = 9'b000100010;
             
         //R-type
-            7'b0110011: ctrl = 8'b10000010;
+            7'b0110011: ctrl = 9'b010000010;
             
         //Load
-            7'b0000011: ctrl = 8'b00101011;
+            7'b0000011: ctrl = 9'b011101011;
             
         //Store
-            7'b0100011: ctrl = 8'b00100100;
+            7'b0100011: ctrl = 9'b100100100;
         endcase
     end
 endmodule
 
 module aluControlUnit(
-    input logic [1:0] ALUOp,
+    input logic [2:0] ALUOp,
     input logic [2:0] func3,
     input logic [6:0] func7,
-    output logic [4:0] ALUCtrl
+    output logic [4:0] ALUCtrl,
+    output logic [3:0] byte_en
     );
     
     always @(*) begin
         casez({ALUOp, func3})
         //I-type
-            ({2'b00, 3'b000}): ALUCtrl = 5'b00000; //ADDI
-            ({2'b00, 3'b010}): ALUCtrl = 5'b00001; //SLTI
-            ({2'b00, 3'b011}): ALUCtrl = 5'b00010; //SLTIU
-            ({2'b00, 3'b100}): ALUCtrl = 5'b00011; //XORI
-            ({2'b00, 3'b110}): ALUCtrl = 5'b00100; //ORI
-            ({2'b00, 3'b111}): ALUCtrl = 5'b00101; //ANDI
-            ({2'b00, 3'b001}): ALUCtrl = 5'b00110; //SLLI
-            ({2'b00, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b00111 : 5'b01000); //SRAI or SRLI
+            ({3'b000, 3'b000}): ALUCtrl = 5'b00000; //ADDI
+            ({3'b000, 3'b010}): ALUCtrl = 5'b00001; //SLTI
+            ({3'b000, 3'b011}): ALUCtrl = 5'b00010; //SLTIU
+            ({3'b000, 3'b100}): ALUCtrl = 5'b00011; //XORI
+            ({3'b000, 3'b110}): ALUCtrl = 5'b00100; //ORI
+            ({3'b000, 3'b111}): ALUCtrl = 5'b00101; //ANDI
+            ({3'b000, 3'b001}): ALUCtrl = 5'b00110; //SLLI
+            ({3'b000, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b00111 : 5'b01000); //SRAI or SRLI
             
         //R-type
-            ({2'b10, 3'b000}): ALUCtrl = (func7[5] == 1 ? 5'b01001 : 5'b01010); //SUB or ADD
-            ({2'b10, 3'b001}): ALUCtrl = 5'b01011; //SLL
-            ({2'b10, 3'b010}): ALUCtrl = 5'b01100; //SLT
-            ({2'b10, 3'b011}): ALUCtrl = 5'b01101; //SLTU
-            ({2'b10, 3'b100}): ALUCtrl = 5'b01110; //XOR
-            ({2'b10, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b01111 : 5'b10000); //SRA or SRL
-            ({2'b10, 3'b110}): ALUCtrl = 5'b10001; //OR
-            ({2'b10, 3'b111}): ALUCtrl = 5'b10010; //AND 
+            ({3'b010, 3'b000}): ALUCtrl = (func7[5] == 1 ? 5'b01001 : 5'b01010); //SUB or ADD
+            ({3'b010, 3'b001}): ALUCtrl = 5'b01011; //SLL
+            ({3'b010, 3'b010}): ALUCtrl = 5'b01100; //SLT
+            ({3'b010, 3'b011}): ALUCtrl = 5'b01101; //SLTU
+            ({3'b010, 3'b100}): ALUCtrl = 5'b01110; //XOR
+            ({3'b010, 3'b101}): ALUCtrl = (func7[5] == 1 ? 5'b01111 : 5'b10000); //SRA or SRL
+            ({3'b010, 3'b110}): ALUCtrl = 5'b10001; //OR
+            ({3'b010, 3'b111}): ALUCtrl = 5'b10010; //AND 
             
-        //Load
-            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LB
-            ({2'b00, 3'b001}): ALUCtrl = 5'b10011; //LH
-            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LW
-            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LBU
-            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //LHU
+        //Load , set byte enables here
+            ({3'b011, 3'b000}): begin 
+                                    ALUCtrl = 5'b00000; //LB
+                                    byte_en = 4'b0001;
+                                end
+            ({3'b011, 3'b001}): begin 
+                                    ALUCtrl = 5'b00000; //LH
+                                    byte_en = 4'b0011;
+                                end
+            ({3'b011, 3'b010}): begin 
+                                    ALUCtrl = 5'b00000; //LW
+                                    byte_en = 4'b1111;
+                                end
+            ({3'b011, 3'b100}): begin 
+                                    ALUCtrl = 5'b00000; //LBU
+                                    byte_en = 4'b1000;
+                                end
+            ({3'b011, 3'b101}): begin 
+                                    ALUCtrl = 5'b00000; //LHU
+                                    byte_en = 4'b1100;
+                                end
             
         //Store
-            ({2'b00, 3'b000}): ALUCtrl = 5'b10011; //SB
-            ({2'b00, 3'b001}): ALUCtrl = 5'b10011; //SH
-            ({2'b00, 3'b010}): ALUCtrl = 5'b10011; //SW
-             
+            ({3'b100, 3'b000}): begin 
+                                    ALUCtrl = 5'b00000; //SB
+                                    byte_en = 4'b0001;
+                                end
+            ({3'b100, 3'b001}): begin 
+                                    ALUCtrl = 5'b00000; //SH
+                                    byte_en = 4'b0011;
+                                end
+            ({3'b100, 3'b010}): begin 
+                                    ALUCtrl = 5'b00000; //SW
+                                    byte_en = 4'b1111;
+                                end
         endcase 
     
     end
@@ -439,19 +470,6 @@ module alu(
                 end 
             17: out = A | B; //OR
             18: out = A & B; //AND
-            
-        //Load
-//            19:
-//            20:
-//            21:
-//            22:
-//            23:
-        
-        //Store
-//            24:
-//            25:
-//            26:
-        
             default: out = 32'b0;
         endcase
     end
