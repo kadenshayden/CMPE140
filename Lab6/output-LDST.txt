@@ -1,0 +1,86 @@
+
+Instruction: SW
+Address : 268500992
+Write Data: -1
+
+
+Instruction: SW
+Address : 268500996
+Write Data: 7
+
+
+Instruction: SW
+Address : 268501000
+Write Data: -5
+
+
+Instruction: LW
+Address : 268500992
+Read Data: -1
+
+
+Instruction: LW
+Address : 268500996
+Read Data: 7
+
+
+Instruction: LW
+Address : 268501000
+Read Data: -5
+
+
+Instruction: SW
+Address : 268501004
+Write Data: -1510974961
+
+
+Instruction: LB
+Address : 268501007
+Read Data: -91
+
+
+Instruction: SB
+Address : 268501005
+Write Data: -91
+
+
+Instruction: LBU
+Address : 268501004
+Read Data: 15
+
+
+Instruction: SB
+Address : 268501006
+Write Data: 15
+
+
+Instruction: LH
+Address : 268501006
+Read Data: -23281
+
+
+Instruction: SH
+Address : 268501008
+Write Data: -23281
+
+
+Instruction: LHU
+Address : 268501004
+Read Data: 42255
+
+
+Instruction: SH
+Address : 268501010
+Write Data: 42255
+
+
+Instruction: SB
+Address : 0
+Write Data: 268501010
+
+
+Instruction: SB
+Address : x
+Write Data: 0
+
+
