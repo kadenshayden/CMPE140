@@ -35,8 +35,10 @@ module cpu(
     wire [4:0] ALUCtrl; //ALU Control
     wire [1:0] forwardA, forwardB; //Forwarding MUXs
     wire [3:0] byte_en_line; //Byte enable line
+    wire [2:0] loadmode; //For load instructions
 
     wire [31:0] data; //Write Back variable
+    logic signed [31:0] memory_read; //Read data from RAM
     
     int file1, file2; //For file text output
     //Trace files found in ..\[project folder]\[project name].sim\sim_1\behav\xsim
@@ -55,13 +57,13 @@ module cpu(
     
     reg [63:0] IF_ID; //Fetch and Decode carry register
     reg [165:0] ID_EX; //Decode and Execute carry register
-    reg [76:0] EX_MEM; //Execute and Memory carry register
+    reg [79:0] EX_MEM; //Execute and Memory carry register
     reg [70:0] MEM_WB; //Memory and Write Back carry register
     
     wire [63:0] IF_IDwire; //Wire from IF_ID to ID_EX
     wire [165:0] ID_EXwire; //Wire from ID_EX to EX_MEM
-    wire [76:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
-    wire [70:0] MEM_WBwire; //Wire from MEM_WB to WB
+    wire [79:0] EX_MEMwire; //Wire from EX_MEM to MEM_WB
+    reg [70:0] MEM_WBwire; //Wire from MEM_WB to WB
     
     logic [31:0] alu_A, alu_B, bestAlu_B; //To determine ALU inputs
     logic signed [31:0] writeData; //Write data for register
@@ -152,7 +154,7 @@ module cpu(
     .rs1(ID_EXwire[157:153]), .rs2(ID_EXwire[152:148]),
     .forwardA(forwardA), .forwardB(forwardB));
     
-    aluControlUnit aluControl(.ALUOp(ALUOp), .func3(ID_EXwire[147:145]), .func7(ID_EXwire[144:138]), .ALUCtrl(ALUCtrl), .byte_en(byte_en_line));
+    aluControlUnit aluControl(.ALUOp(ID_EX[135:133]), .func3(ID_EXwire[147:145]), .func7(ID_EXwire[144:138]), .ALUCtrl(ALUCtrl), .byte_en(byte_en_line), .loadmode(loadmode));
     
     alu calc(.shamt(ID_EXwire[162:158]), .A(alu_A), .B(bestAlu_B), .ALUCtrl(ALUCtrl), .out(alu_out));
     
@@ -173,15 +175,16 @@ module cpu(
     end
     always@(posedge clk)begin 
         
-       EX_MEM = { byte_en_line, ID_EXwire[165], ID_EXwire[164], ID_EXwire[163], ID_EXwire[95:64], ID_EXwire[137], ID_EXwire[132:128], alu_out }; 
+       EX_MEM = { loadmode, byte_en_line, ID_EXwire[165], ID_EXwire[164], ID_EXwire[163], bestAlu_B, ID_EXwire[137], ID_EXwire[132:128], alu_out }; 
       //UPDATE THIS LIST WHEN ADDING TO CARRY REG
       //EX_MEM(byte_en_line, MemtoReg, MemWrite, MemRead ,regData2, RegWrite, rd, alu_out)
       
+      //loadmode = EX_MEM[79:77]
       //byte_en_line = EX_MEM[76:73]
       //MemtoReg = EX_MEM[72]
       //MemWrite = EX_MEM[71]
       //MemRead = EX_MEM[70]
-      //regData2 = EX_MEM[69:38]
+      //bestAlu_B = EX_MEM[69:38]
       //RegWrite = EX_MEM[37]
       //rd = EX_MEM[36:32]
       //alu_out = EX_MEM[31:0]
@@ -190,15 +193,25 @@ module cpu(
     assign EX_MEMwire = EX_MEM;
     
     //Stage Four - Memory Access             
-    assign dmem_data = EX_MEMwire[69:38]; //regData2 always written to memory
+    assign dmem_data = EX_MEMwire[71] ? writeData : 32'hz; //WriteData always input to memory write data line
+                                                           //If MemWrite = 0, set to read mode
+                                                               
     assign dmem_addr = EX_MEMwire[31:0]; //alu_out sets the memory address
     assign dmem_wen = EX_MEMwire[71]; //If 1 write, if 0 read
     assign byte_en = EX_MEMwire[76:73]; //Byte_enable is set
     
-    always@(posedge clk)begin
-        if(EX_MEMwire[70] == 1) begin //If MemRead, read data to write back
-            MEM_WB = { dmem_data, EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
-            //MEM_WB(dmem_data, MemtoReg, RegWrite, rd, alu_out)
+    always @(posedge clk) begin
+        if (EX_MEMwire[70] == 1) begin // If MemRead, read data to write back
+            case(EX_MEMwire[79:77])
+                3'b101: memory_read = { {24{ 1'b1}}, dmem_data[7:0]}; //LB
+                3'b110: memory_read = { {16{ 1'b1}}, dmem_data[15:0]}; //LH
+                3'b111: memory_read = dmem_data; //LW
+                3'b001: memory_read = dmem_data[7:0]; //LBU
+                3'b010: memory_read = dmem_data[15:0]; //LBH
+            endcase
+            
+            MEM_WB = { memory_read , EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0] };
+            // MEM_WB(dmem_data, MemtoReg, RegWrite, rd, alu_out)
         end
         else begin
             MEM_WB = { EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0]};
@@ -213,8 +226,7 @@ module cpu(
         //RegWrite = MEM_WB[37]
         //rd = MEM_WB[36:32]
         //alu_out = MEM_WB[31:0]
-            
-           
+                      
     end
     assign MEM_WBwire = MEM_WB;
     
@@ -356,7 +368,8 @@ module aluControlUnit(
     input logic [2:0] func3,
     input logic [6:0] func7,
     output logic [4:0] ALUCtrl,
-    output logic [3:0] byte_en
+    output logic [3:0] byte_en,
+    output logic [2:0] loadmode
     );
     
     always @(*) begin
@@ -382,39 +395,40 @@ module aluControlUnit(
             ({3'b010, 3'b111}): ALUCtrl = 5'b10010; //AND 
             
         //Load , set byte enables here
-            ({3'b011, 3'b000}): begin 
-                                    ALUCtrl = 5'b00000; //LB
-                                    byte_en = 4'b0001;
+            ({3'b011, 3'b000}): begin
+                                     ALUCtrl = 5'b00000; //LB
+                                     loadmode = 3'b101;
                                 end
-            ({3'b011, 3'b001}): begin 
-                                    ALUCtrl = 5'b00000; //LH
-                                    byte_en = 4'b0011;
+            ({3'b011, 3'b001}): begin
+                                     ALUCtrl = 5'b00000; //LH
+                                     loadmode = 3'b110;
                                 end
-            ({3'b011, 3'b010}): begin 
-                                    ALUCtrl = 5'b00000; //LW
-                                    byte_en = 4'b1111;
+            ({3'b011, 3'b010}): begin
+                                     ALUCtrl = 5'b00000; //LW
+                                     loadmode = 3'b111;;
                                 end
-            ({3'b011, 3'b100}): begin 
-                                    ALUCtrl = 5'b00000; //LBU
-                                    byte_en = 4'b1000;
+            ({3'b011, 3'b100}): begin
+                                     ALUCtrl = 5'b00000; //LBU
+                                     loadmode = 3'b001;
                                 end
-            ({3'b011, 3'b101}): begin 
-                                    ALUCtrl = 5'b00000; //LHU
-                                    byte_en = 4'b1100;
+            ({3'b011, 3'b101}): begin
+                                     ALUCtrl = 5'b00000; //LHU
+                                     loadmode = 3'b010;
                                 end
+
             
         //Store
             ({3'b100, 3'b000}): begin 
                                     ALUCtrl = 5'b00000; //SB
-                                    byte_en = 4'b0001;
+                                    byte_en = 4'b0001; //First byte
                                 end
             ({3'b100, 3'b001}): begin 
                                     ALUCtrl = 5'b00000; //SH
-                                    byte_en = 4'b0011;
+                                    byte_en = 4'b0011; //Lower 2 bytes
                                 end
             ({3'b100, 3'b010}): begin 
                                     ALUCtrl = 5'b00000; //SW
-                                    byte_en = 4'b1111;
+                                    byte_en = 4'b1111; //All bytes
                                 end
         endcase 
     
