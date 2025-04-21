@@ -36,6 +36,8 @@ module tb(
             clk = 0;
             
             #35 rst_n = 1;
+            #800;
+            $stop;
         end
     
 wire [address_size-1:0] imem_addr;
@@ -43,6 +45,7 @@ wire [word_size-1:0] imem_insn;
 wire [address_size-1:0] dmem_addr;
 wire [word_size-1:0] dmem_data;
 wire dmem_wen;
+wire [3:0] byte_en;
 
 
 cpu dut 
@@ -62,6 +65,7 @@ dmem (
 .rst_n (rst_n),
 .clk (clk),
 .wen (dmem_wen),
+.byte_en (byte_en),
 .addr (dmem_addr),
 .data (dmem_data)
 );
