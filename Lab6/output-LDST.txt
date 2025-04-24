@@ -1,86 +1,121 @@
-
+ALUOut: 10000000
+ALUOut: 100
+ALUOut: 10000
+ALUOut: 10010000
+ALUOut: ffffffff
+ALUOut: 10010000
+ALUOut: 7
 Instruction: SW
-Address : 268500992
-Write Data: -1
+Address : 10010000
+Write Data: ffffffff
 
 
+ALUOut: 10010004
+ALUOut: fffffffb
 Instruction: SW
-Address : 268500996
+Address : 10010004
 Write Data: 7
 
 
+ALUOut: 10010008
+ALUOut: 10010000
 Instruction: SW
-Address : 268501000
-Write Data: -5
+Address : 10010008
+Write Data: fffffffb
 
 
+ALUOut: 10010004
 Instruction: LW
-Address : 268500992
-Read Data: -1
+Address : 10010000
+Read Data: ffffffff
 
 
+ALUOut: 10010008
 Instruction: LW
-Address : 268500996
+Address : 10010004
 Read Data: 7
 
 
+ALUOut: 7
 Instruction: LW
-Address : 268501000
-Read Data: -5
+Address : 10010008
+Read Data: fffffffb
 
 
+ALUOut: ffffffff
+ALUOut: 5a
+ALUOut: 5a00
+ALUOut: 5a0f
+ALUOut: 5a0f00
+ALUOut: 5a0fa5
+ALUOut: 5a0fa500
+ALUOut: 5a0fa5f0
+ALUOut: a5f05a0f
+ALUOut: 1001000c
+ALUOut: 1001000c
 Instruction: SW
-Address : 268501004
-Write Data: -1510974961
+Address : 1001000c
+Write Data: a5f05a0f
 
 
+ALUOut: 1001000f
+ALUOut: 1001000d
 Instruction: LB
-Address : 268501007
-Read Data: -91
+Address : 1001000f
+Read Data: ffffffa5
 
 
+ALUOut: 1001000c
 Instruction: SB
-Address : 268501005
-Write Data: -91
+Address : 1001000d
+Write Data: ffffffa5
 
 
+ALUOut: 1001000e
 Instruction: LBU
-Address : 268501004
-Read Data: 15
+Address : 1001000c
+Read Data: f
 
 
+ALUOut: 1001000e
 Instruction: SB
-Address : 268501006
-Write Data: 15
+Address : 1001000e
+Write Data: f
 
 
+ALUOut: 10010010
 Instruction: LH
-Address : 268501006
-Read Data: -23281
+Address : 1001000e
+Read Data: ffffa50f
 
 
+ALUOut: 1001000c
 Instruction: SH
-Address : 268501008
-Write Data: -23281
+Address : 10010010
+Write Data: ffffa50f
 
 
+ALUOut: 10010012
 Instruction: LHU
-Address : 268501004
-Read Data: 42255
+Address : 1001000c
+Read Data: a50f
 
 
+ALUOut: 0
 Instruction: SH
-Address : 268501010
-Write Data: 42255
+Address : 10010012
+Write Data: a50f
 
 
+ALUOut: xxxxxxxx
 Instruction: SB
 Address : 0
-Write Data: 268501010
+Write Data: 10010012
 
 
+ALUOut: xxxxxxxx
 Instruction: SB
-Address : x
+Address : xxxxxxxx
 Write Data: 0
 
 

@@ -175,7 +175,9 @@ module cpu(
         endcase
     end
     always@(posedge clk)begin 
+       
        EX_MEM = { loadmode, byte_en_line, ID_EXwire[165], ID_EXwire[164], ID_EXwire[163], bestAlu_B, ID_EXwire[137], ID_EXwire[132:128], alu_out }; 
+       $fdisplay(file3, "ALUOut: %1h", EX_MEM[31:0]);
       //UPDATE THIS LIST WHEN ADDING TO CARRY REG
       //EX_MEM(byte_en_line, MemtoReg, MemWrite, MemRead ,regData2, RegWrite, rd, alu_out)
       
@@ -208,8 +210,8 @@ module cpu(
                 4'b1111: $fdisplay(file3, "Instruction: SW");
             endcase
             
-            $fdisplay(file3, "Address : %1d", dmem_addr); //Display address to write to
-            $fdisplay(file3, "Write Data: %1d" , writeData);
+            $fdisplay(file3, "Address : %1h", dmem_addr); //Display address to write to
+            $fdisplay(file3, "Write Data: %1h" , writeData);
             $fdisplay(file3, "\n");
         end
         
@@ -237,8 +239,8 @@ module cpu(
                             memory_read = dmem_data[15:0]; //LBH
                         end
             endcase
-            $fdisplay(file3, "Address : %1d", dmem_addr);
-            $fdisplay(file3, "Read Data: %1d" , memory_read);
+            $fdisplay(file3, "Address : %1h", dmem_addr);
+            $fdisplay(file3, "Read Data: %1h" , memory_read);
             $fdisplay(file3, "\n");
             
             MEM_WB = { memory_read , EX_MEMwire[72], EX_MEMwire[37], EX_MEMwire[36:32], EX_MEMwire[31:0] };
@@ -519,5 +521,6 @@ module alu(
             default: out = 32'b0;
         endcase
     end
+    
     
 endmodule
